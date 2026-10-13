@@ -59,7 +59,9 @@ async function update(){
  const km=Number($('distance').value);$('rangeLabel').textContent=km+' km';$('radarRange').textContent='RING = '+km+' KM';$('count').textContent='…';status('Otsin lennukeid…');
  try{
   
-const url = `https://api.adsb.lol/v2/lat/${pos.lat}/lon/${pos.lon}/dist/${Math.min(km,250)}`;
+
+const url = `https://avioadsb.org/v1/point/${pos.lat}/${pos.lon}/${Math.min(km / 1.852, 100)}`;
+
 const response = await fetch(url);
 
   if(!response.ok)throw Error('Lennuandmete teenus ei vasta.');
