@@ -58,7 +58,10 @@ async function update(){
  if(!pos){status('Vajuta esmalt „Leia minu asukoht”.');return}
  const km=Number($('distance').value);$('rangeLabel').textContent=km+' km';$('radarRange').textContent='RING = '+km+' KM';$('count').textContent='…';status('Otsin lennukeid…');
  try{
-  const response=await fetch(`https://api.adsb.lol/v2/lat/${pos.lat}/lon/${pos.lon}/dist/${Math.min(km,250)}`);
+  
+const url = `https://api.adsb.lol/v2/lat/${pos.lat}/lon/${pos.lon}/dist/${Math.min(km,250)}`;
+const response = await fetch(url);
+
   if(!response.ok)throw Error('Lennuandmete teenus ei vasta.');
   const json=await response.json();
   aircraft=(json.ac||[]).filter(p=>Number.isFinite(p.lat)&&Number.isFinite(p.lon)).map(p=>({...p,distance:distanceKm(pos.lat,pos.lon,p.lat,p.lon),bearing:bearing(pos.lat,pos.lon,p.lat,p.lon)})).filter(p=>p.distance<=km).sort((a,b)=>a.distance-b.distance);
