@@ -67,7 +67,7 @@ const response = await fetch(url);
 if (!response.ok) throw Error(`Lennuandmete teenus vastas koodiga ${response.status}`);
 
 
-  if(!response.ok)throw Error('Lennuandmete teenus ei vasta.');
+ 
   const json=await response.json();
   aircraft=(json.ac||[]).filter(p=>Number.isFinite(p.lat)&&Number.isFinite(p.lon)).map(p=>({...p,distance:distanceKm(pos.lat,pos.lon,p.lat,p.lon),bearing:bearing(pos.lat,pos.lon,p.lat,p.lon)})).filter(p=>p.distance<=km).sort((a,b)=>a.distance-b.distance);
   $('count').textContent=aircraft.length;$('updated').textContent=new Date().toLocaleTimeString('et-EE',{hour:'2-digit',minute:'2-digit'});
