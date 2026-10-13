@@ -76,7 +76,28 @@ if (!response.ok) throw Error(`Lennuandmete teenus vastas koodiga ${response.sta
  }catch(e){aircraft=[];$('count').textContent='—';$('list').innerHTML='<div class="sub">Lennuandmete laadimine ebaõnnestus. Kontrolli internetti ja proovi hiljem uuesti.</div>';drawRadar();status(e.message+' Avalik teenus võib ajutiselt mitte töötada.')}
 }
 function locate(){if(!navigator.geolocation){status('See brauser ei toeta asukoha määramist.');return}status('Ootan asukoha luba…');navigator.geolocation.getCurrentPosition(p=>{pos={lat:p.coords.latitude,lon:p.coords.longitude};update()},e=>status(e.code===1?'Asukoha luba keelati. Luba see Androidi brauseri seadetes.':'Asukohta ei õnnestunud määrata. Kontrolli telefoni asukohaseadet.'),{enableHighAccuracy:true,timeout:15000,maximumAge:60000})}
-$('locate').addEventListener('click',locate);$('refresh').addEventListener('click',update);$('distance').addEventListener('change',update);
+
+$('locate').addEventListener('click',locate);
+$('refresh').addEventListener('click',update);
+$('distance').addEventListener('change',update);
+
+let lastUpdate = 0;
+let updating = false;
+const originalUpdate = update;
+update = async function() {
+  if (updating || Date.now() - lastUpdate < 10000) return;
+  updating = true;
+  lastUpdate = Date.now();
+  try {
+    await originalUpdate();
+  } finally {
+    updating = false;
+  }
+};
+setInterval(() => {
+  if (pos && !updating && Date.now() - lastUpdate >= 15000) update();
+}, 1000);
+
 if('serviceWorker'in navigator&&location.protocol.startsWith('http'))navigator.serviceWorker.register('./sw.js').catch(()=>{});
 resizeCanvas();
 </script></body></html>
