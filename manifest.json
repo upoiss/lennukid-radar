@@ -1,0 +1,10 @@
+{
+  "name": "Lennukid lähedal — Radar",
+  "short_name": "Lennukiradar",
+  "description": "Vaata lähedal lendavaid lennukeid radarivaates.",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#030b0a",
+  "theme_color": "#04110e",
+  "icons": []
+}

@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="et"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#04110e"><meta name="description" content="Vaata lähedal lendavaid lennukeid radarivaates.">
+<link rel="manifest" href="manifest.json"><title>Lennukid lähedal — Radar</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<style>
+:root{color-scheme:dark;--bg:#030b0a;--panel:#071714;--line:#174438;--green:#57ffb2;--dim:#3f9875;--muted:#8bb5a5;--white:#e4fff2}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--white);font:15px system-ui,Roboto,Arial,sans-serif}
+header{padding:20px 18px 14px;background:linear-gradient(150deg,#09241c,#030b0a);border-bottom:1px solid var(--line)}
+.eyebrow{font-size:11px;letter-spacing:.18em;color:var(--green);font-weight:800}h1{font-size:25px;margin:6px 0 3px;letter-spacing:-.03em}.sub{font-size:12px;color:var(--muted)}
+main{max-width:800px;margin:auto;padding:12px;display:grid;gap:12px}
+.topstats{display:grid;grid-template-columns:repeat(3,1fr);gap:7px}.stat{border:1px solid var(--line);background:var(--panel);border-radius:12px;padding:10px}.stat b{display:block;color:var(--green);font-size:21px;font-variant-numeric:tabular-nums}.stat span{font-size:9px;letter-spacing:.08em;color:var(--muted)}
+.radarwrap{border:1px solid #1a4e3c;border-radius:18px;background:radial-gradient(circle at center,#0b3024 0,#041a14 60%,#020d0a 100%);padding:8px;position:relative;overflow:hidden}
+#radar{width:100%;aspect-ratio:1/1;max-height:460px;display:block}.radarlabel{position:absolute;top:15px;left:15px;font-size:10px;letter-spacing:.15em;color:#82c9a9}.radarfoot{display:flex;justify-content:space-between;gap:8px;color:var(--muted);font-size:10px;padding:4px 6px 0}
+.controls{display:flex;flex-wrap:wrap;gap:8px}button,select{font:inherit;border-radius:11px;padding:11px 13px;border:1px solid #28624e;background:#0b241b;color:var(--white)}button.primary{background:var(--green);color:#032016;border-color:var(--green);font-weight:800}button:active{transform:scale(.98)}select{flex:1;min-width:100px}
+.panel{border:1px solid var(--line);background:var(--panel);border-radius:15px;padding:13px}.panel h2{font-size:14px;margin:0 0 8px;color:var(--green);letter-spacing:.05em}.plane{display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid #15392e}.plane:last-child{border:0}.picon{font-size:20px;color:var(--green);width:36px;height:36px;display:grid;place-items:center;border:1px solid #245541;border-radius:10px}.info{min-width:0;flex:1}.callsign{font-weight:800;overflow-wrap:anywhere}.meta{font-size:11px;color:var(--muted);margin-top:3px}.alt{text-align:right;font-size:12px;white-space:nowrap;color:var(--green);font-variant-numeric:tabular-nums}.status{font-size:12px;color:var(--muted);line-height:1.5;padding:0 3px}.dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--green);margin-right:6px;box-shadow:0 0 9px var(--green)}
+footer{font-size:10px;color:#729587;line-height:1.5;padding:0 3px 20px}
+@media(min-width:700px){main{grid-template-columns:1.1fr .9fr}.topstats,.controls,.status,footer{grid-column:1/-1}.radarwrap{grid-column:1}.panel{grid-column:2;grid-row:2 / span 2}.radarwrap{align-self:start}}
+</style></head><body>
+<header><div class="eyebrow">● LIVE AIR TRACKING</div><h1>✈ LENNUKID LÄHEDAL</h1><div class="sub">Radarivaade sinu ümbruses olevatele lennukitele</div></header>
+<main>
+<section class="topstats"><div class="stat"><b id="count">—</b><span>LENNUKIT LEITUD</span></div><div class="stat"><b id="rangeLabel">50 km</b><span>RAADIUS</span></div><div class="stat"><b id="updated">—</b><span>VIIMATI UUENDATUD</span></div></section>
+<section class="radarwrap"><div class="radarlabel">RADAR / RELATIIVNE ASUKOHT</div><canvas id="radar" aria-label="Radarikuva lennukite asukohtadega"></canvas><div class="radarfoot"><span>● SINA &nbsp; ▲ LENNUK</span><span id="radarRange">RING = 50 KM</span></div></section>
+<section class="controls"><button class="primary" id="locate">◎ Leia minu asukoht</button><button id="refresh">↻ Uuenda</button><select id="distance" aria-label="Otsinguraadius"><option value="25">25 km</option><option value="50" selected>50 km</option><option value="100">100 km</option><option value="200">200 km</option></select></section>
+<section class="panel"><h2>▸ LÄHIMAD LENNUKID</h2><div id="list"><div class="sub">Asukoha määramiseks vajuta nuppu „Leia minu asukoht”.</div></div></section>
+<div class="status" id="status"><span class="dot"></span>Valmis. Asukohta kasutatakse ainult sinu loal.</div>
+<footer>Andmed pärinevad avalikust ADS-B jälgimisvõrgust adsb.lol ning võivad olla hilinenud või puudulikud. Kõik lennukid ei pruugi olla nähtavad. Asukoha kasutamiseks on vaja brauseri luba ja HTTPS-ühendust. See on paigaldatav veebirakendus (PWA), mitte veel Play poes avaldatud rakendus.</footer>
+</main>
+<script>
+const $=id=>document.getElementById(id);let pos=null,aircraft=[];
+const canvas=$('radar'),ctx=canvas.getContext('2d');
+function resizeCanvas(){const dpr=Math.min(window.devicePixelRatio||1,2),r=canvas.getBoundingClientRect();canvas.width=Math.round(r.width*dpr);canvas.height=Math.round(r.height*dpr);ctx.setTransform(dpr,0,0,dpr,0,0);drawRadar()}
+window.addEventListener('resize',resizeCanvas);
+function drawRadar(){
+ const w=canvas.clientWidth,h=canvas.clientHeight;if(!w||!h)return;const s=Math.min(w,h),cx=w/2,cy=h/2,R=s*.43,range=Number($('distance').value);
+ ctx.clearRect(0,0,w,h);
+ // Subtle radar sweep background and rings
+ ctx.save();ctx.translate(cx,cy);
+ ctx.strokeStyle='rgba(87,255,178,.26)';ctx.lineWidth=1;
+ for(let i=1;i<=4;i++){ctx.beginPath();ctx.arc(0,0,R*i/4,0,Math.PI*2);ctx.stroke()}
+ ctx.beginPath();ctx.moveTo(-R,0);ctx.lineTo(R,0);ctx.moveTo(0,-R);ctx.lineTo(0,R);ctx.stroke();
+ ctx.strokeStyle='rgba(87,255,178,.10)';for(let a=0;a<360;a+=30){const q=a*Math.PI/180;ctx.beginPath();ctx.moveTo(0,0);ctx.lineTo(Math.cos(q)*R,Math.sin(q)*R);ctx.stroke()}
+ const grad=ctx.createRadialGradient(0,0,0,0,0,R);grad.addColorStop(0,'rgba(47,255,158,.08)');grad.addColorStop(1,'rgba(47,255,158,0)');ctx.fillStyle=grad;ctx.beginPath();ctx.arc(0,0,R,0,Math.PI*2);ctx.fill();
+ // center user marker
+ ctx.fillStyle='#e4fff2';ctx.shadowColor='#57ffb2';ctx.shadowBlur=12;ctx.beginPath();ctx.arc(0,0,4,0,Math.PI*2);ctx.fill();ctx.shadowBlur=0;
+ if(pos){aircraft.forEach(p=>{const km=p.distance,ang=(p.bearing||0)*Math.PI/180;const rr=Math.min(R,km/range*R);const x=Math.sin(ang)*rr,y=-Math.cos(ang)*rr;ctx.save();ctx.translate(x,y);ctx.rotate((Number(p.track)||0)*Math.PI/180);ctx.fillStyle='#57ffb2';ctx.shadowColor='#57ffb2';ctx.shadowBlur=8;ctx.beginPath();ctx.moveTo(0,-7);ctx.lineTo(4,5);ctx.lineTo(0,3);ctx.lineTo(-4,5);ctx.closePath();ctx.fill();ctx.restore()})}
+ ctx.restore();
+ ctx.fillStyle='rgba(142,220,184,.8)';ctx.font='10px system-ui';ctx.textAlign='center';ctx.fillText(range+' KM',cx,cy-R-7);
+}
+function distanceKm(a,b,c,d){const rad=x=>x*Math.PI/180;let x=rad(c-a),y=rad(d-b),q=Math.sin(x/2)**2+Math.cos(rad(a))*Math.cos(rad(c))*Math.sin(y/2)**2;return 6371*2*Math.atan2(Math.sqrt(q),Math.sqrt(1-q))}
+function bearing(a,b,c,d){const r=x=>x*Math.PI/180,y=x=>x*180/Math.PI;let p1=r(a),p2=r(c),dl=r(d-b);return (y(Math.atan2(Math.sin(dl)*Math.cos(p2),Math.cos(p1)*Math.sin(p2)-Math.sin(p1)*Math.cos(p2)*Math.cos(dl)))+360)%360}
+function esc(s){return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
+function altText(a){return typeof a==='number'?Math.round(a*3.28084).toLocaleString('et-EE')+' ft':'—'}
+function speedText(s){return typeof s==='number'?Math.round(s*1.852)+' km/h':'—'}
+function status(s){$('status').innerHTML='<span class="dot"></span>'+esc(s)}
+async function update(){
+ if(!pos){status('Vajuta esmalt „Leia minu asukoht”.');return}
+ const km=Number($('distance').value);$('rangeLabel').textContent=km+' km';$('radarRange').textContent='RING = '+km+' KM';$('count').textContent='…';status('Otsin lennukeid…');
+ try{
+  const response=await fetch(`https://api.adsb.lol/v2/lat/${pos.lat}/lon/${pos.lon}/dist/${Math.min(km,250)}`);
+  if(!response.ok)throw Error('Lennuandmete teenus ei vasta.');
+  const json=await response.json();
+  aircraft=(json.ac||[]).filter(p=>Number.isFinite(p.lat)&&Number.isFinite(p.lon)).map(p=>({...p,distance:distanceKm(pos.lat,pos.lon,p.lat,p.lon),bearing:bearing(pos.lat,pos.lon,p.lat,p.lon)})).filter(p=>p.distance<=km).sort((a,b)=>a.distance-b.distance);
+  $('count').textContent=aircraft.length;$('updated').textContent=new Date().toLocaleTimeString('et-EE',{hour:'2-digit',minute:'2-digit'});
+  $('list').innerHTML=aircraft.slice(0,20).map(p=>`<div class="plane"><div class="picon">✈</div><div class="info"><div class="callsign">${esc((p.flight||p.r||p.hex||'Tundmatu').trim())}</div><div class="meta">${p.type?esc(p.type)+' · ':''}${p.distance.toFixed(1)} km · suund ${Math.round(p.bearing)}° · ${speedText(p.gs)}</div></div><div class="alt">${altText(typeof p.alt_baro==='number'?p.alt_baro:null)}<div class="meta">KÕRGUS</div></div></div>`).join('')||'<div class="sub">Selles raadiuses lennukeid ei leitud. Proovi suuremat raadiust.</div>';
+  drawRadar();status(`Näidatakse ${aircraft.length} lennukit ${km} km raadiuses. Vajuta „Uuenda”, et andmeid värskendada.`);
+ }catch(e){aircraft=[];$('count').textContent='—';$('list').innerHTML='<div class="sub">Lennuandmete laadimine ebaõnnestus. Kontrolli internetti ja proovi hiljem uuesti.</div>';drawRadar();status(e.message+' Avalik teenus võib ajutiselt mitte töötada.')}
+}
+function locate(){if(!navigator.geolocation){status('See brauser ei toeta asukoha määramist.');return}status('Ootan asukoha luba…');navigator.geolocation.getCurrentPosition(p=>{pos={lat:p.coords.latitude,lon:p.coords.longitude};update()},e=>status(e.code===1?'Asukoha luba keelati. Luba see Androidi brauseri seadetes.':'Asukohta ei õnnestunud määrata. Kontrolli telefoni asukohaseadet.'),{enableHighAccuracy:true,timeout:15000,maximumAge:60000})}
+$('locate').addEventListener('click',locate);$('refresh').addEventListener('click',update);$('distance').addEventListener('change',update);
+if('serviceWorker'in navigator&&location.protocol.startsWith('http'))navigator.serviceWorker.register('./sw.js').catch(()=>{});
+resizeCanvas();
+</script></body></html>
