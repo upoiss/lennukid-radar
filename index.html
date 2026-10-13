@@ -62,7 +62,10 @@ async function update(){
 
 const url = `https://avioadsb.org/v1/point/${pos.lat}/${pos.lon}/${Math.min(km / 1.852, 100)}`;
 
+
 const response = await fetch(url);
+if (!response.ok) throw Error(`Lennuandmete teenus vastas koodiga ${response.status}`);
+
 
   if(!response.ok)throw Error('Lennuandmete teenus ei vasta.');
   const json=await response.json();
