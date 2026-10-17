@@ -1,103 +1,257 @@
-<!doctype html>
-<html lang="et"><head>
-<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<meta name="theme-color" content="#04110e"><meta name="description" content="Vaata lähedal lendavaid lennukeid radarivaates.">
-<link rel="manifest" href="manifest.json"><title>Lennukid lähedal — Radar</title>
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-<style>
-:root{color-scheme:dark;--bg:#030b0a;--panel:#071714;--line:#174438;--green:#57ffb2;--dim:#3f9875;--muted:#8bb5a5;--white:#e4fff2}
-*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--white);font:15px system-ui,Roboto,Arial,sans-serif}
-header{padding:20px 18px 14px;background:linear-gradient(150deg,#09241c,#030b0a);border-bottom:1px solid var(--line)}
-.eyebrow{font-size:11px;letter-spacing:.18em;color:var(--green);font-weight:800}h1{font-size:25px;margin:6px 0 3px;letter-spacing:-.03em}.sub{font-size:12px;color:var(--muted)}
-main{max-width:800px;margin:auto;padding:12px;display:grid;gap:12px}
-.topstats{display:grid;grid-template-columns:repeat(3,1fr);gap:7px}.stat{border:1px solid var(--line);background:var(--panel);border-radius:12px;padding:10px}.stat b{display:block;color:var(--green);font-size:21px;font-variant-numeric:tabular-nums}.stat span{font-size:9px;letter-spacing:.08em;color:var(--muted)}
-.radarwrap{border:1px solid #1a4e3c;border-radius:18px;background:radial-gradient(circle at center,#0b3024 0,#041a14 60%,#020d0a 100%);padding:8px;position:relative;overflow:hidden}
-#radar{width:100%;aspect-ratio:1/1;max-height:460px;display:block}.radarlabel{position:absolute;top:15px;left:15px;font-size:10px;letter-spacing:.15em;color:#82c9a9}.radarfoot{display:flex;justify-content:space-between;gap:8px;color:var(--muted);font-size:10px;padding:4px 6px 0}
-.controls{display:flex;flex-wrap:wrap;gap:8px}button,select{font:inherit;border-radius:11px;padding:11px 13px;border:1px solid #28624e;background:#0b241b;color:var(--white)}button.primary{background:var(--green);color:#032016;border-color:var(--green);font-weight:800}button:active{transform:scale(.98)}select{flex:1;min-width:100px}
-.panel{border:1px solid var(--line);background:var(--panel);border-radius:15px;padding:13px}.panel h2{font-size:14px;margin:0 0 8px;color:var(--green);letter-spacing:.05em}.plane{display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid #15392e}.plane:last-child{border:0}.picon{font-size:20px;color:var(--green);width:36px;height:36px;display:grid;place-items:center;border:1px solid #245541;border-radius:10px}.info{min-width:0;flex:1}.callsign{font-weight:800;overflow-wrap:anywhere}.meta{font-size:11px;color:var(--muted);margin-top:3px}.alt{text-align:right;font-size:12px;white-space:nowrap;color:var(--green);font-variant-numeric:tabular-nums}.status{font-size:12px;color:var(--muted);line-height:1.5;padding:0 3px}.dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--green);margin-right:6px;box-shadow:0 0 9px var(--green)}
-footer{font-size:10px;color:#729587;line-height:1.5;padding:0 3px 20px}
-@media(min-width:700px){main{grid-template-columns:1.1fr .9fr}.topstats,.controls,.status,footer{grid-column:1/-1}.radarwrap{grid-column:1}.panel{grid-column:2;grid-row:2 / span 2}.radarwrap{align-self:start}}
-</style></head><body>
-<header><div class="eyebrow">● LIVE AIR TRACKING</div><h1>✈ LENNUKID LÄHEDAL</h1><div class="sub">Radarivaade sinu ümbruses olevatele lennukitele</div></header>
-<main>
-<section class="topstats"><div class="stat"><b id="count">—</b><span>LENNUKIT LEITUD</span></div><div class="stat"><b id="rangeLabel">50 km</b><span>RAADIUS</span></div><div class="stat"><b id="updated">—</b><span>VIIMATI UUENDATUD</span></div></section>
-<section class="radarwrap"><div class="radarlabel">RADAR / RELATIIVNE ASUKOHT</div><canvas id="radar" aria-label="Radarikuva lennukite asukohtadega"></canvas><div class="radarfoot"><span>● SINA &nbsp; ▲ LENNUK</span><span id="radarRange">RING = 50 KM</span></div></section>
-<section class="controls"><button class="primary" id="locate">◎ Leia minu asukoht</button><button id="refresh">↻ Uuenda</button><select id="distance" aria-label="Otsinguraadius"><option value="25">25 km</option><option value="50" selected>50 km</option><option value="100">100 km</option><option value="200">200 km</option></select></section>
-<section class="panel"><h2>▸ LÄHIMAD LENNUKID</h2><div id="list"><div class="sub">Asukoha määramiseks vajuta nuppu „Leia minu asukoht”.</div></div></section>
-<div class="status" id="status"><span class="dot"></span>Valmis. Asukohta kasutatakse ainult sinu loal.</div>
-<footer>Andmed pärinevad avalikust ADS-B jälgimisvõrgust adsb.lol ning võivad olla hilinenud või puudulikud. Kõik lennukid ei pruugi olla nähtavad. Asukoha kasutamiseks on vaja brauseri luba ja HTTPS-ühendust. See on paigaldatav veebirakendus (PWA), mitte veel Play poes avaldatud rakendus.</footer>
-</main>
-<script>
-const $=id=>document.getElementById(id);let pos=null,aircraft=[];
-const canvas=$('radar'),ctx=canvas.getContext('2d');
-function resizeCanvas(){const dpr=Math.min(window.devicePixelRatio||1,2),r=canvas.getBoundingClientRect();canvas.width=Math.round(r.width*dpr);canvas.height=Math.round(r.height*dpr);ctx.setTransform(dpr,0,0,dpr,0,0);drawRadar()}
-window.addEventListener('resize',resizeCanvas);
-function drawRadar(){
- const w=canvas.clientWidth,h=canvas.clientHeight;if(!w||!h)return;const s=Math.min(w,h),cx=w/2,cy=h/2,R=s*.43,range=Number($('distance').value);
- ctx.clearRect(0,0,w,h);
- // Subtle radar sweep background and rings
- ctx.save();ctx.translate(cx,cy);
- ctx.strokeStyle='rgba(87,255,178,.26)';ctx.lineWidth=1;
- for(let i=1;i<=4;i++){ctx.beginPath();ctx.arc(0,0,R*i/4,0,Math.PI*2);ctx.stroke()}
- ctx.beginPath();ctx.moveTo(-R,0);ctx.lineTo(R,0);ctx.moveTo(0,-R);ctx.lineTo(0,R);ctx.stroke();
- ctx.strokeStyle='rgba(87,255,178,.10)';for(let a=0;a<360;a+=30){const q=a*Math.PI/180;ctx.beginPath();ctx.moveTo(0,0);ctx.lineTo(Math.cos(q)*R,Math.sin(q)*R);ctx.stroke()}
- const grad=ctx.createRadialGradient(0,0,0,0,0,R);grad.addColorStop(0,'rgba(47,255,158,.08)');grad.addColorStop(1,'rgba(47,255,158,0)');ctx.fillStyle=grad;ctx.beginPath();ctx.arc(0,0,R,0,Math.PI*2);ctx.fill();
- // center user marker
- ctx.fillStyle='#e4fff2';ctx.shadowColor='#57ffb2';ctx.shadowBlur=12;ctx.beginPath();ctx.arc(0,0,4,0,Math.PI*2);ctx.fill();ctx.shadowBlur=0;
- if(pos){aircraft.forEach(p=>{const km=p.distance,ang=(p.bearing||0)*Math.PI/180;const rr=Math.min(R,km/range*R);const x=Math.sin(ang)*rr,y=-Math.cos(ang)*rr;ctx.save();ctx.translate(x,y);ctx.rotate((Number(p.track)||0)*Math.PI/180);ctx.fillStyle='#57ffb2';ctx.shadowColor='#57ffb2';ctx.shadowBlur=8;ctx.beginPath();ctx.moveTo(0,-7);ctx.lineTo(4,5);ctx.lineTo(0,3);ctx.lineTo(-4,5);ctx.closePath();ctx.fill();ctx.restore()})}
- ctx.restore();
- ctx.fillStyle='rgba(142,220,184,.8)';ctx.font='10px system-ui';ctx.textAlign='center';ctx.fillText(range+' KM',cx,cy-R-7);
-}
-function distanceKm(a,b,c,d){const rad=x=>x*Math.PI/180;let x=rad(c-a),y=rad(d-b),q=Math.sin(x/2)**2+Math.cos(rad(a))*Math.cos(rad(c))*Math.sin(y/2)**2;return 6371*2*Math.atan2(Math.sqrt(q),Math.sqrt(1-q))}
-function bearing(a,b,c,d){const r=x=>x*Math.PI/180,y=x=>x*180/Math.PI;let p1=r(a),p2=r(c),dl=r(d-b);return (y(Math.atan2(Math.sin(dl)*Math.cos(p2),Math.cos(p1)*Math.sin(p2)-Math.sin(p1)*Math.cos(p2)*Math.cos(dl)))+360)%360}
-function esc(s){return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
-function altText(a){return typeof a==='number'?Math.round(a*3.28084).toLocaleString('et-EE')+' ft':'—'}
-function speedText(s){return typeof s==='number'?Math.round(s*1.852)+' km/h':'—'}
-function status(s){$('status').innerHTML='<span class="dot"></span>'+esc(s)}
-async function update(){
- if(!pos){status('Vajuta esmalt „Leia minu asukoht”.');return}
- const km=Number($('distance').value);$('rangeLabel').textContent=km+' km';$('radarRange').textContent='RING = '+km+' KM';$('count').textContent='…';status('Otsin lennukeid…');
- try{
-  
 
-const url = `https://avioadsb.org/v1/point/${pos.lat}/${pos.lon}/${Math.min(km / 1.852, 100)}`;
+<!DOCTYPE html>
+<html lang="et">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#07111d">
+  <title>Lennukid lähedal – radar</title>
+  <link rel="stylesheet"
+        href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: #07111d;
+      color: #e5f4ff;
+      font: 15px Arial, sans-serif;
+    }
+    header {
+      padding: 14px;
+      background: #0b1c2c;
+      border-bottom: 1px solid #17405a;
+    }
+    h1 { margin: 0 0 6px; font-size: 21px; }
+    #status { color: #9bb6ca; font-size: 13px; }
+    .controls {
+      display: flex;
+      gap: 8px;
+      padding: 10px;
+      flex-wrap: wrap;
+    }
+    button {
+      background: #12334a;
+      color: white;
+      border: 1px solid #2a6586;
+      border-radius: 8px;
+      padding: 10px 12px;
+      font-size: 14px;
+      cursor: pointer;
+    }
+    button:active { background: #20516c; }
+    #map {
+      height: 65vh;
+      min-height: 360px;
+      background: #091522;
+    }
+    #details {
+      padding: 12px 15px;
+      line-height: 1.6;
+      white-space: pre-line;
+      color: #c9e4f7;
+    }
+    .plane {
+      color: #66ffb2;
+      font-size: 25px;
+      text-align: center;
+      text-shadow: 0 0 8px #00ff88;
+    }
+    footer {
+      padding: 10px 15px;
+      font-size: 12px;
+      color: #7895aa;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>✈ LENNUKID LÄHEDAL</h1>
+    <div id="status">Valmis asukoha määramiseks</div>
+  </header>
 
+  <div class="controls">
+    <button id="locate">📍 Minu asukoht</button>
+    <button data-range="25">25 km</button>
+    <button data-range="50">50 km</button>
+    <button data-range="100">100 km</button>
+    <button id="refresh">↻ Uuenda</button>
+  </div>
 
-const response = await fetch(url);
-if (!response.ok) throw Error(`Lennuandmete teenus vastas koodiga ${response.status}`);
+  <div id="map"></div>
+  <div id="details">Vajuta lennukile, et näha lennuandmeid.</div>
+  <footer>
+    Lennuandmed: ADS-B avalikud andmevood. Andmete saadavus sõltub
+    andmeallikast ja selle päringupiirangutest.
+  </footer>
 
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script>
+  (() => {
+    const status = document.getElementById("status");
+    const details = document.getElementById("details");
 
- 
-  const json=await response.json();
-  aircraft=(json.ac||[]).filter(p=>Number.isFinite(p.lat)&&Number.isFinite(p.lon)).map(p=>({...p,distance:distanceKm(pos.lat,pos.lon,p.lat,p.lon),bearing:bearing(pos.lat,pos.lon,p.lat,p.lon)})).filter(p=>p.distance<=km).sort((a,b)=>a.distance-b.distance);
-  $('count').textContent=aircraft.length;$('updated').textContent=new Date().toLocaleTimeString('et-EE',{hour:'2-digit',minute:'2-digit'});
-  $('list').innerHTML=aircraft.slice(0,20).map(p=>`<div class="plane"><div class="picon">✈</div><div class="info"><div class="callsign">${esc((p.flight||p.r||p.hex||'Tundmatu').trim())}</div><div class="meta">${p.type?esc(p.type)+' · ':''}${p.distance.toFixed(1)} km · suund ${Math.round(p.bearing)}° · ${speedText(p.gs)}</div></div><div class="alt">${altText(typeof p.alt_baro==='number'?p.alt_baro:null)}<div class="meta">KÕRGUS</div></div></div>`).join('')||'<div class="sub">Selles raadiuses lennukeid ei leitud. Proovi suuremat raadiust.</div>';
-  drawRadar();status(`Näidatakse ${aircraft.length} lennukit ${km} km raadiuses. Vajuta „Uuenda”, et andmeid värskendada.`);
- }catch(e){aircraft=[];$('count').textContent='—';$('list').innerHTML='<div class="sub">Lennuandmete laadimine ebaõnnestus. Kontrolli internetti ja proovi hiljem uuesti.</div>';drawRadar();status(e.message+' Avalik teenus võib ajutiselt mitte töötada.')}
-}
-function locate(){if(!navigator.geolocation){status('See brauser ei toeta asukoha määramist.');return}status('Ootan asukoha luba…');navigator.geolocation.getCurrentPosition(p=>{pos={lat:p.coords.latitude,lon:p.coords.longitude};update()},e=>status(e.code===1?'Asukoha luba keelati. Luba see Androidi brauseri seadetes.':'Asukohta ei õnnestunud määrata. Kontrolli telefoni asukohaseadet.'),{enableHighAccuracy:true,timeout:15000,maximumAge:60000})}
+    let lat = 59.437;
+    let lon = 24.753;
+    let range = 50;
+    let markers = [];
+    let busy = false;
+    let lastRequest = 0;
+    let locationMarker = null;
 
-$('locate').addEventListener('click',locate);
-$('refresh').addEventListener('click',update);
-$('distance').addEventListener('change',update);
+    const map = L.map("map").setView([lat, lon], 8);
 
-let lastUpdate = 0;
-let updating = false;
-const originalUpdate = update;
-update = async function() {
-  if (updating || Date.now() - lastUpdate < 10000) return;
-  updating = true;
-  lastUpdate = Date.now();
-  try {
-    await originalUpdate();
-  } finally {
-    updating = false;
-  }
-};
-setInterval(() => {
-  if (pos && !updating && Date.now() - lastUpdate >= 15000) update();
-}, 1000);
+    L.tileLayer(
+      "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png",
+      {
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; CARTO',
+        maxZoom: 19
+      }
+    ).addTo(map);
 
-if('serviceWorker'in navigator&&location.protocol.startsWith('http'))navigator.serviceWorker.register('./sw.js').catch(()=>{});
-resizeCanvas();
-</script></body></html>
+    function say(message) {
+      status.textContent = message;
+    }
+
+    function clearPlanes() {
+      markers.forEach(marker => map.removeLayer(marker));
+      markers = [];
+    }
+
+    function planeIcon(heading) {
+      return L.divIcon({
+        className: "",
+        html: `<div class="plane" style="transform:rotate(${Number(heading)||0}deg)">✈</div>`,
+        iconSize: [30, 30],
+        iconAnchor: [15, 15]
+      });
+    }
+
+    function showPlane(plane) {
+      if (typeof plane.lat !== "number" ||
+          typeof plane.lon !== "number") return;
+
+      const marker = L.marker([plane.lat, plane.lon], {
+        icon: planeIcon(plane.track)
+      }).addTo(map);
+
+      const call = plane.flight?.trim() || "Tundmatu lend";
+      marker.bindTooltip(call);
+
+      marker.on("click", () => {
+        details.textContent =
+          `✈ Lend: ${call}\n` +
+          `ICAO: ${plane.hex || "—"}\n` +
+          `Kõrgus: ${plane.alt_baro ?? "—"} ft\n` +
+          `Kiirus: ${plane.gs ?? "—"} kt\n` +
+          `Suund: ${plane.track ?? "—"}°\n` +
+          `Vertikaalkiirus: ${plane.baro_rate ?? "—"} ft/min\n` +
+          `Asukoht: ${plane.lat.toFixed(4)}, ${plane.lon.toFixed(4)}`;
+      });
+
+      markers.push(marker);
+    }
+
+    async function loadPlanes() {
+      if (busy) return;
+
+      // Ära tee päringuid sagedamini kui iga 30 sekundi järel.
+      const wait = 30000 - (Date.now() - lastRequest);
+      if (lastRequest && wait > 0) {
+        say(`Järgmine päring ${Math.ceil(wait / 1000)} sek pärast`);
+        return;
+      }
+
+      busy = true;
+      lastRequest = Date.now();
+      say("Laadin lennuandmeid…");
+
+      try {
+        // ADS-B dist-parameeter on meremiilides.
+        const distNm = Math.round(range / 1.852);
+        const url =
+          `https://api.adsb.lol/v2/lat/${lat}/lon/${lon}/dist/${distNm}`;
+
+        const response = await fetch(url, {
+          headers: { "Accept": "application/json" }
+        });
+
+        if (!response.ok) {
+          throw new Error(`Andmeserveri HTTP viga ${response.status}`);
+        }
+
+        const data = await response.json();
+
+        if (!Array.isArray(data.aircraft)) {
+          throw new Error("Andmeserver ei tagastanud lennukite loendit");
+        }
+
+        clearPlanes();
+        data.aircraft.forEach(showPlane);
+
+        say(`Lennukeid: ${markers.length} · Raadius ${range} km · uuendatud ${new Date().toLocaleTimeString("et-EE")}`);
+      } catch (error) {
+        say("Lennuandmete laadimine ebaõnnestus");
+        details.textContent =
+          "Viga: " + error.message + "\n\n" +
+          "Kui näed teadet Failed to fetch või CORS, " +
+          "ei luba brauser andmeserveriga otse ühendust. " +
+          "Sel juhul vajab rakendus serveripoolset vahendajat. " +
+          "Kui näed HTTP viga 429, on päringuid piiratud.";
+      } finally {
+        busy = false;
+      }
+    }
+
+    document.getElementById("locate").addEventListener("click", () => {
+      if (!navigator.geolocation) {
+        say("See brauser ei toeta asukoha määramist.");
+        return;
+      }
+
+      say("Küsin asukohta…");
+      navigator.geolocation.getCurrentPosition(
+        position => {
+          lat = position.coords.latitude;
+          lon = position.coords.longitude;
+          map.setView([lat, lon], 9);
+
+          if (locationMarker) map.removeLayer(locationMarker);
+          locationMarker = L.circleMarker([lat, lon], {
+            radius: 7,
+            color: "#57c7ff",
+            fillColor: "#57c7ff",
+            fillOpacity: 1
+          }).addTo(map).bindPopup("Sinu asukoht");
+
+          lastRequest = 0;
+          loadPlanes();
+        },
+        error => say("Asukohta ei saadud: " + error.message),
+        { enableHighAccuracy: true, timeout: 15000 }
+      );
+    });
+
+    document.querySelectorAll("[data-range]").forEach(button => {
+      button.addEventListener("click", () => {
+        range = Number(button.dataset.range);
+        lastRequest = 0;
+        loadPlanes();
+      });
+    });
+
+    document.getElementById("refresh").addEventListener("click", () => {
+      if (busy) return;
+      lastRequest = 0;
+      loadPlanes();
+    });
+
+    map.on("moveend", () => {
+      // Kaardi liigutamine ei käivita automaatselt uut päringut.
+    });
+
+    loadPlanes();
+    setInterval(loadPlanes, 30000);
+  })();
+  </script>
+</body>
+</html>
